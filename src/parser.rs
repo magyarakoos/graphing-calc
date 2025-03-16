@@ -4,31 +4,31 @@ use std::{iter::Peekable, str::Chars};
 
 use super::config::read_json;
 
-enum FunctionType {
+pub enum FunctionType {
     Prefix,
     Infix,
 }
 
-struct UnaryFunction {
+pub struct UnaryFunction {
     func: Box<dyn Fn(f32) -> f32>,
     name: String,
-    r#type: FunctionType,
 }
 
-struct BinaryFunction {
+pub struct BinaryFunction {
     func: Box<dyn Fn(f32, f32) -> f32>,
     name: String,
+    precedence: i32,
     r#type: FunctionType,
 }
 
-enum Function {
+pub enum Function {
     Unary(UnaryFunction),
     Binary(BinaryFunction),
 }
 
-enum Token {
+pub enum Token<'a> {
     Number(f32),
-    Function(Function),
+    Function(&'a Function),
     X,
     OpenParen,
     CloseParen,
@@ -42,6 +42,7 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Binary(BinaryFunction {
             func: Box::new(|x, y| x + y),
             name: "+".to_string(),
+            precedence: 1,
             r#type: FunctionType::Infix,
         }),
     );
@@ -50,6 +51,7 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Binary(BinaryFunction {
             func: Box::new(|x, y| x - y),
             name: "-".to_string(),
+            precedence: 1,
             r#type: FunctionType::Infix,
         }),
     );
@@ -58,6 +60,7 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Binary(BinaryFunction {
             func: Box::new(|x, y| x * y),
             name: "*".to_string(),
+            precedence: 2,
             r#type: FunctionType::Infix,
         }),
     );
@@ -66,6 +69,7 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Binary(BinaryFunction {
             func: Box::new(|x, y| x / y),
             name: "/".to_string(),
+            precedence: 2,
             r#type: FunctionType::Infix,
         }),
     );
@@ -74,6 +78,7 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Binary(BinaryFunction {
             func: Box::new(|x, y| x.powf(y)),
             name: "^".to_string(),
+            precedence: 3,
             r#type: FunctionType::Infix,
         }),
     );
@@ -83,7 +88,6 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Unary(UnaryFunction {
             func: Box::new(|x| x.exp()),
             name: "exp".to_string(),
-            r#type: FunctionType::Prefix,
         }),
     );
     operators.insert(
@@ -91,7 +95,6 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Unary(UnaryFunction {
             func: Box::new(|x| x.sin()),
             name: "sin".to_string(),
-            r#type: FunctionType::Prefix,
         }),
     );
     operators.insert(
@@ -99,7 +102,6 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Unary(UnaryFunction {
             func: Box::new(|x| x.cos()),
             name: "cos".to_string(),
-            r#type: FunctionType::Prefix,
         }),
     );
     operators.insert(
@@ -107,7 +109,6 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Unary(UnaryFunction {
             func: Box::new(|x| x.tan()),
             name: "tan".to_string(),
-            r#type: FunctionType::Prefix,
         }),
     );
     operators.insert(
@@ -115,7 +116,6 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Unary(UnaryFunction {
             func: Box::new(|x| x.sqrt()),
             name: "sqrt".to_string(),
-            r#type: FunctionType::Prefix,
         }),
     );
     operators.insert(
@@ -123,7 +123,6 @@ fn get_operators() -> HashMap<String, Function> {
         Function::Unary(UnaryFunction {
             func: Box::new(|x| x.ln()),
             name: "ln".to_string(),
-            r#type: FunctionType::Prefix,
         }),
     );
 
@@ -160,7 +159,7 @@ impl Parser {
         str
     }
 
-    fn read_number(it: &mut Peekable<Chars<'_>>) -> Option<Token> {
+    fn read_number<'a>(it: &mut Peekable<Chars<'a>>) -> Option<Token<'a>> {
         Some(Token::Number(
             Self::read_while(it, Self::is_digit).parse().ok()?,
         ))
@@ -171,22 +170,14 @@ impl Parser {
 
         if str == "x" {
             Some(Token::X)
-        } else if Self::is_constant(self, &str) {
+        } else if self.is_constant(&str) {
             Some(Token::Number(self.constants[str].as_f64()? as f32))
-        } else if Self::is_operator(self, &str) {
+        } else if self.is_operator(&str) {
             let ch = *it.peek()?;
-            if ch != '(' {
+            if !Self::is_primitive_function(str.chars().nth(0)?) && ch != '(' {
                 None
             } else {
-                let func = self.operators.get(&str)?.clone();
-                match func {
-                    Function::Unary(unary_func) => {
-                        Some(Token::Function(Function::Unary(*unary_func)))
-                    }
-                    Function::Binary(binary_func) => {
-                        Some(Token::Function(Function::Binary(*binary_func)))
-                    }
-                }
+                Some(Token::Function(self.operators.get(&str)?))
             }
         } else {
             None
@@ -221,20 +212,37 @@ impl Parser {
         Self::is_alpha(c) || Self::is_primitive_function(c)
     }
 
-    fn read_next(&self, it: &mut Peekable<Chars<'_>>) -> Option<Token> {
+    fn read_next<'a>(&'a self, it: &mut Peekable<Chars<'a>>) -> Option<Token<'a>> {
         Self::read_while(it, Self::is_whitespace);
         let ch = *it.peek()?;
 
         if Self::is_digit(ch) {
             Self::read_number(it)
         } else if Self::is_function(ch) {
-            Self::read_function(&self, it)
+            self.read_function(it)
         } else if ch == '(' {
+            it.next();
             Some(Token::OpenParen)
         } else if ch == ')' {
+            it.next();
             Some(Token::CloseParen)
         } else {
             None
         }
+    }
+
+    pub fn tokenize<'a>(&'a self, str: &'a str) -> Vec<Token<'a>> {
+        let mut it = str.chars().peekable();
+        let mut vec: Vec<Token> = Vec::new();
+        loop {
+            if let Some(token) = self.read_next(&mut it) {
+                vec.push(token);
+            } else {
+                if it.peek().is_none() {
+                    break;
+                }
+            }
+        }
+        vec
     }
 }

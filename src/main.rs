@@ -2,8 +2,10 @@ mod config;
 mod coordinate;
 mod graph;
 mod parser;
+mod shunting_yard;
 
 use parser::Parser;
+use parser::Token::*;
 
 //use config::{Config, parse_config};
 //use graph::graph_function;
@@ -15,7 +17,18 @@ use parser::Parser;
 
 fn main() {
     let parser = Parser::new("../config/parser/constants.json");
-    println!("{}", parser.constants["e"].as_f64().unwrap());
+
+    let tokens = parser.tokenize("5 + sin(x) ");
+    for token in &tokens {
+        match token {
+            Number(n) => print!("{n} "),
+            Function(_) => print!("F "),
+            X => print!("X "),
+            OpenParen => print!("( "),
+            CloseParen => print!(") "),
+        }
+    }
+    println!("\n{}", tokens.len());
 
     //let cfg: Config = parse_config("../config.json")
     //    .map_err(|e| {
