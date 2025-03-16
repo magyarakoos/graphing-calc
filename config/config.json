@@ -1,0 +1,10 @@
+{
+    "width": 2000,
+    "height": 2000,
+    "fps": 1,
+    "title": "Graphing calculator",
+    "min_x": -10,
+    "min_y": -10,
+    "max_x": 10,
+    "max_y": 10
+}
