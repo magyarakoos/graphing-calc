@@ -1,10 +1,10 @@
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs;
 use std::{iter::Peekable, str::Chars};
 
-use super::config::read_json;
-use super::shunting_yard::evaluate_postfix;
-use super::shunting_yard::infix_to_postfix;
+use crate::shunting_yard::evaluate_postfix;
+use crate::shunting_yard::infix_to_postfix;
 
 pub enum FunctionBox {
     Unary(Box<dyn Fn(f32) -> f32>),
@@ -127,11 +127,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(constants_path: &str) -> Self {
-        let constants = read_json(constants_path)
-            .map_err(|e| {
-                panic!("Problem parsing the JSON: {e:?}");
-            })
-            .unwrap();
+        let constants = serde_json::from_str(&fs::read_to_string(constants_path).unwrap()).unwrap();
 
         Self {
             constants,
@@ -238,7 +234,6 @@ impl Parser {
         infix_to_postfix(vec)
     }
 
-    // parses a formula and generates a function for it
     pub fn parse<'a>(&'a self, str: &'a str) -> Option<Box<dyn Fn(f32) -> f32 + 'a>> {
         if let Some(tokens) = self.tokenize(str) {
             evaluate_postfix(&tokens, 0.0)?;

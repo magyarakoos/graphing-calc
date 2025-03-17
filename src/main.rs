@@ -6,33 +6,27 @@ mod shunting_yard;
 
 use parser::Parser;
 
-use config::{Config, parse_config};
+use config::CONFIG;
 use graph::graph_function;
 use raylib::prelude::*;
 
 fn main() {
-    let parser = Parser::new("config/parser/constants.json");
+    let parser = Parser::new("config/constants.json");
 
     let f = parser
-        .parse("sin(x^2) + 5 * (6 - 2)")
+        .parse("1 / sin(x)")
         .expect("The formula is malformed.");
 
-    let cfg: Config = parse_config("../config.json")
-        .map_err(|e| {
-            panic!("Problem parsing the JSON: {e:?}");
-        })
-        .unwrap();
-
     let (mut rl, thread) = raylib::init()
-        .size(cfg.width, cfg.height)
-        .title(&cfg.title)
+        .size(CONFIG.width, CONFIG.height)
+        .title(&CONFIG.title)
         .build();
 
-    rl.set_target_fps(cfg.fps);
+    rl.set_target_fps(CONFIG.fps);
 
     while !rl.window_should_close() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::WHITE);
-        graph_function(&f, &mut d, &cfg);
+        graph_function(&f, &mut d);
     }
 }

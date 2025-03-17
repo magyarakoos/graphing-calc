@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::CONFIG;
 
 pub fn interpolate(value: f32, min: f32, max: f32, new_min: f32, new_max: f32) -> Option<f32> {
     if value < min || value > max || min > max || new_min > new_max {
@@ -8,44 +8,44 @@ pub fn interpolate(value: f32, min: f32, max: f32, new_min: f32, new_max: f32) -
     }
 }
 
-pub fn pixel_to_coordinate(x: i32, y: i32, cfg: &Config) -> Option<(f32, f32)> {
+pub fn pixel_to_coordinate(x: i32, y: i32) -> Option<(f32, f32)> {
     let x = interpolate(
-        (x - cfg.width / 2) as f32,
-        -(cfg.width / 2) as f32,
-        (cfg.width / 2) as f32,
-        cfg.min_x,
-        cfg.max_x,
+        (x - CONFIG.width / 2) as f32,
+        -(CONFIG.width / 2) as f32,
+        (CONFIG.width / 2) as f32,
+        CONFIG.min_x,
+        CONFIG.max_x,
     )?;
     let y = interpolate(
-        (y - cfg.height / 2) as f32,
-        -(cfg.height / 2) as f32,
-        (cfg.height / 2) as f32,
-        cfg.min_y,
-        cfg.max_y,
+        (y - CONFIG.height / 2) as f32,
+        -(CONFIG.height / 2) as f32,
+        (CONFIG.height / 2) as f32,
+        CONFIG.min_y,
+        CONFIG.max_y,
     )?;
     Some((x, y))
 }
 
-pub fn coordinate_to_pixel(x: f32, y: f32, cfg: &Config) -> Option<(i32, i32)> {
-    let x = cfg.width
+pub fn coordinate_to_pixel(x: f32, y: f32) -> Option<(i32, i32)> {
+    let x = CONFIG.width
         - (interpolate(
             x,
-            cfg.min_x,
-            cfg.max_x,
-            -(cfg.width / 2) as f32,
-            (cfg.width / 2) as f32,
+            CONFIG.min_x,
+            CONFIG.max_x,
+            -(CONFIG.width / 2) as f32,
+            (CONFIG.width / 2) as f32,
         )?
         .round() as i32
-            + cfg.width / 2);
-    let y = cfg.height
+            + CONFIG.width / 2);
+    let y = CONFIG.height
         - (interpolate(
             y,
-            cfg.min_y,
-            cfg.max_y,
-            -(cfg.height / 2) as f32,
-            (cfg.height / 2) as f32,
+            CONFIG.min_y,
+            CONFIG.max_y,
+            -(CONFIG.height / 2) as f32,
+            (CONFIG.height / 2) as f32,
         )?
         .round() as i32
-            + cfg.height / 2);
+            + CONFIG.height / 2);
     Some((x, y))
 }

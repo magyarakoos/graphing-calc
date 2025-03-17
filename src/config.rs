@@ -1,5 +1,6 @@
+use once_cell::sync::Lazy;
 use serde::Deserialize;
-use serde_json::{Result, Value};
+use serde_json::Value;
 use std::fs;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -14,17 +15,13 @@ pub struct Config {
     pub max_y: f32,
 }
 
-pub fn parse_config(path: &str) -> Result<Config> {
-    let data = fs::read_to_string(path).map_err(|e| {
-        panic!("Problem opening the file: {e:?}");
-    })?;
-    let cfg: Config = serde_json::from_str(&data)?;
-    Ok(cfg)
-}
+pub static CONSTANTS: Lazy<Value> = Lazy::new(|| {
+    let data = fs::read_to_string("config/constants.json").unwrap();
+    serde_json::from_str(&data).expect("Invalid JSON")
+});
 
-pub fn read_json(path: &str) -> Result<Value> {
-    let data = fs::read_to_string(path).map_err(|e| {
-        panic!("Problem opening the file: {e:?}");
-    })?;
-    Ok(serde_json::from_str(&data)?)
-}
+pub static CONFIG: Lazy<Config> = Lazy::new(|| {
+    let data = fs::read_to_string("config/config.json").unwrap();
+    let cfg: Config = serde_json::from_str(&data).expect("Invalid JSON");
+    cfg
+});
