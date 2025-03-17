@@ -3,27 +3,18 @@ use std::collections::HashMap;
 use std::{iter::Peekable, str::Chars};
 
 use super::config::read_json;
+use super::shunting_yard::evaluate_postfix;
+use super::shunting_yard::infix_to_postfix;
 
-pub enum FunctionType {
-    Prefix,
-    Infix,
+pub enum FunctionBox {
+    Unary(Box<dyn Fn(f32) -> f32>),
+    Binary(Box<dyn Fn(f32, f32) -> f32>),
 }
 
-pub struct UnaryFunction {
-    func: Box<dyn Fn(f32) -> f32>,
-    name: String,
-}
-
-pub struct BinaryFunction {
-    func: Box<dyn Fn(f32, f32) -> f32>,
-    name: String,
-    precedence: i32,
-    r#type: FunctionType,
-}
-
-pub enum Function {
-    Unary(UnaryFunction),
-    Binary(BinaryFunction),
+pub struct Function {
+    pub func: FunctionBox,
+    pub name: String,
+    pub precedence: i32,
 }
 
 pub enum Token<'a> {
@@ -39,91 +30,91 @@ fn get_operators() -> HashMap<String, Function> {
 
     operators.insert(
         "+".to_string(),
-        Function::Binary(BinaryFunction {
-            func: Box::new(|x, y| x + y),
+        Function {
+            func: FunctionBox::Binary(Box::new(|x, y| x + y)),
             name: "+".to_string(),
             precedence: 1,
-            r#type: FunctionType::Infix,
-        }),
+        },
     );
     operators.insert(
         "-".to_string(),
-        Function::Binary(BinaryFunction {
-            func: Box::new(|x, y| x - y),
+        Function {
+            func: FunctionBox::Binary(Box::new(|x, y| x - y)),
             name: "-".to_string(),
             precedence: 1,
-            r#type: FunctionType::Infix,
-        }),
+        },
     );
     operators.insert(
         "*".to_string(),
-        Function::Binary(BinaryFunction {
-            func: Box::new(|x, y| x * y),
+        Function {
+            func: FunctionBox::Binary(Box::new(|x, y| x * y)),
             name: "*".to_string(),
             precedence: 2,
-            r#type: FunctionType::Infix,
-        }),
+        },
     );
     operators.insert(
         "/".to_string(),
-        Function::Binary(BinaryFunction {
-            func: Box::new(|x, y| x / y),
+        Function {
+            func: FunctionBox::Binary(Box::new(|x, y| x / y)),
             name: "/".to_string(),
             precedence: 2,
-            r#type: FunctionType::Infix,
-        }),
+        },
     );
     operators.insert(
         "^".to_string(),
-        Function::Binary(BinaryFunction {
-            func: Box::new(|x, y| x.powf(y)),
+        Function {
+            func: FunctionBox::Binary(Box::new(|x, y| x.powf(y))),
             name: "^".to_string(),
             precedence: 3,
-            r#type: FunctionType::Infix,
-        }),
+        },
     );
-
     operators.insert(
         "exp".to_string(),
-        Function::Unary(UnaryFunction {
-            func: Box::new(|x| x.exp()),
+        Function {
+            func: FunctionBox::Unary(Box::new(|x| x.exp())),
             name: "exp".to_string(),
-        }),
+            precedence: 4,
+        },
     );
     operators.insert(
         "sin".to_string(),
-        Function::Unary(UnaryFunction {
-            func: Box::new(|x| x.sin()),
+        Function {
+            func: FunctionBox::Unary(Box::new(|x| x.sin())),
             name: "sin".to_string(),
-        }),
+            precedence: 4,
+        },
     );
     operators.insert(
         "cos".to_string(),
-        Function::Unary(UnaryFunction {
-            func: Box::new(|x| x.cos()),
+        Function {
+            func: FunctionBox::Unary(Box::new(|x| x.cos())),
             name: "cos".to_string(),
-        }),
+            precedence: 4,
+        },
     );
     operators.insert(
         "tan".to_string(),
-        Function::Unary(UnaryFunction {
-            func: Box::new(|x| x.tan()),
+        Function {
+            func: FunctionBox::Unary(Box::new(|x| x.tan())),
             name: "tan".to_string(),
-        }),
+            precedence: 4,
+        },
     );
     operators.insert(
         "sqrt".to_string(),
-        Function::Unary(UnaryFunction {
-            func: Box::new(|x| x.sqrt()),
+        Function {
+            func: FunctionBox::Unary(Box::new(|x| x.sqrt())),
             name: "sqrt".to_string(),
-        }),
+            precedence: 4,
+        },
     );
     operators.insert(
         "ln".to_string(),
-        Function::Unary(UnaryFunction {
-            func: Box::new(|x| x.ln()),
+        Function {
+            func: FunctionBox::Unary(Box::new(|x| x.ln())),
             name: "ln".to_string(),
-        }),
+            precedence: 4,
+        },
     );
 
     operators
@@ -165,8 +156,11 @@ impl Parser {
         ))
     }
 
-    fn read_function(&self, it: &mut Peekable<Chars<'_>>) -> Option<Token> {
-        let str = Self::read_while(it, Self::is_function);
+    fn read_function<F>(&self, it: &mut Peekable<Chars<'_>>, predicate: F) -> Option<Token>
+    where
+        F: Fn(char) -> bool,
+    {
+        let str = Self::read_while(it, predicate);
 
         if str == "x" {
             Some(Token::X)
@@ -208,18 +202,16 @@ impl Parser {
         "+-*/^".contains(c)
     }
 
-    fn is_function(c: char) -> bool {
-        Self::is_alpha(c) || Self::is_primitive_function(c)
-    }
-
     fn read_next<'a>(&'a self, it: &mut Peekable<Chars<'a>>) -> Option<Token<'a>> {
         Self::read_while(it, Self::is_whitespace);
         let ch = *it.peek()?;
 
         if Self::is_digit(ch) {
             Self::read_number(it)
-        } else if Self::is_function(ch) {
-            self.read_function(it)
+        } else if Self::is_alpha(ch) {
+            self.read_function(it, Self::is_alpha)
+        } else if Self::is_primitive_function(ch) {
+            self.read_function(it, Self::is_primitive_function)
         } else if ch == '(' {
             it.next();
             Some(Token::OpenParen)
@@ -231,7 +223,7 @@ impl Parser {
         }
     }
 
-    pub fn tokenize<'a>(&'a self, str: &'a str) -> Vec<Token<'a>> {
+    fn tokenize<'a>(&'a self, str: &'a str) -> Option<Vec<Token<'a>>> {
         let mut it = str.chars().peekable();
         let mut vec: Vec<Token> = Vec::new();
         loop {
@@ -243,6 +235,18 @@ impl Parser {
                 }
             }
         }
-        vec
+        infix_to_postfix(vec)
+    }
+
+    // parses a formula and generates a function for it
+    pub fn parse<'a>(&'a self, str: &'a str) -> Option<Box<dyn Fn(f32) -> f32 + 'a>> {
+        if let Some(tokens) = self.tokenize(str) {
+            evaluate_postfix(&tokens, 0.0)?;
+            Some(Box::new(move |x: f32| {
+                evaluate_postfix(&tokens, x).unwrap()
+            }))
+        } else {
+            None
+        }
     }
 }
