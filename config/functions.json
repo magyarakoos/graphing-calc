@@ -1,0 +1,62 @@
+[
+    {
+        "name": "+",
+        "type": "binary",
+        "precedence": 1
+    },
+    {
+        "name": "-",
+        "type": "binary",
+        "precedence": 1
+    },
+    {
+        "name": "*",
+        "type": "binary",
+        "precedence": 2
+    },
+    {
+        "name": "/",
+        "type": "binary",
+        "precedence": 2
+    },
+    {
+        "name": "^",
+        "type": "binary",
+        "precedence": 3
+    },
+    {
+        "name": "max",
+        "type": "binary",
+        "precedence": 4
+    },
+    {
+        "name": "exp",
+        "type": "unary",
+        "precedence": 4
+    },
+    {
+        "name": "sin",
+        "type": "unary",
+        "precedence": 4
+    },
+    {
+        "name": "cos",
+        "type": "unary",
+        "precedence": 4
+    },
+    {
+        "name": "tan",
+        "type": "unary",
+        "precedence": 4
+    },
+    {
+        "name": "sqrt",
+        "type": "unary",
+        "precedence": 4
+    },
+    {
+        "name": "ln",
+        "type": "unary",
+        "precedence": 4
+    }
+]
