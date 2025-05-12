@@ -1,17 +1,19 @@
 use anyhow::{Result, anyhow};
+use itertools::Itertools;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fmt;
 use std::fmt::Error;
-use std::{fmt, fs};
 use std::{iter::Peekable, str::Chars};
 
+use crate::log;
 use crate::shunting_yard::evaluate_postfix;
 use crate::shunting_yard::infix_to_postfix;
 
 pub enum FunctionBox {
-    Unary(Box<dyn Fn(f64) -> f64>),
-    Binary(Box<dyn Fn(f64, f64) -> f64>),
+    Unary(Box<dyn Fn(f64) -> f64 + Sync + Send>),
+    Binary(Box<dyn Fn(f64, f64) -> f64 + Sync + Send>),
 }
 
 pub struct Function {
@@ -26,6 +28,7 @@ pub enum Token<'a> {
     X,
     OpenParen,
     CloseParen,
+    Comma,
 }
 
 impl fmt::Display for Token<'_> {
@@ -36,6 +39,7 @@ impl fmt::Display for Token<'_> {
             Self::X => write!(f, "x"),
             Self::OpenParen => write!(f, "("),
             Self::CloseParen => write!(f, ")"),
+            Self::Comma => write!(f, ","),
         }
     }
 }
@@ -46,19 +50,17 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new<'a>(operators_path: &'a str, constants_path: &'a str) -> Result<Self> {
+    pub fn new<'a>(functions_json: Value, constants_json: Value) -> Result<Self> {
         Ok(Parser {
-            functions: Self::get_operators(operators_path)?,
-            constants: Self::get_constants(constants_path)?,
+            functions: Self::get_functions(functions_json)?,
+            constants: Self::get_constants(constants_json)?,
         })
     }
 
-    fn get_operators<'a>(path: &'a str) -> Result<HashMap<String, Function>> {
-        let data = fs::read_to_string(path)?;
-        let json: Value = serde_json::from_str(&data)?;
+    fn get_functions<'a>(json: Value) -> Result<HashMap<String, Function>> {
         let json = json.as_array().ok_or(anyhow!("Invalid Config format"))?;
 
-        let mut operators = HashMap::new();
+        let mut functions = HashMap::new();
 
         #[derive(Deserialize)]
         struct FunctionData {
@@ -117,16 +119,13 @@ impl Parser {
                 precedence: func_data.precedence,
             };
 
-            operators.insert(func_data.name, function);
+            functions.insert(func_data.name, function);
         }
 
-        Ok(operators)
+        Ok(functions)
     }
 
-    fn get_constants<'a>(path: &'a str) -> Result<HashMap<String, f64>> {
-        let data = fs::read_to_string(path)?;
-
-        let json: Value = serde_json::from_str(&data)?;
+    fn get_constants<'a>(json: Value) -> Result<HashMap<String, f64>> {
         let json = json.as_object().ok_or(anyhow!("Invalid Config format"))?;
 
         let mut constants = HashMap::new();
@@ -173,15 +172,15 @@ impl Parser {
     }
 
     fn is_whitespace(c: char) -> bool {
-        ", \r\n\t".contains(c)
+        " \r\n\t".contains(c)
     }
 
     fn is_alpha(c: char) -> bool {
         "abcdefghijklmnopqrstuvwxyz".contains(c)
     }
 
-    fn read_function<'a>(&'a self, it: &mut Peekable<Chars<'_>>) -> Token<'a> {
-        let ch = *it.peek().unwrap();
+    fn read_function<'a>(&'a self, it: &mut Peekable<Chars<'_>>) -> Result<Token<'a>> {
+        let ch = *it.peek().ok_or(anyhow!("EOF reached"))?;
         let str = if Self::is_primitive(ch) {
             it.next().unwrap().to_string()
         } else {
@@ -189,13 +188,13 @@ impl Parser {
         };
 
         if str == "x" {
-            Token::X
+            Ok(Token::X)
         } else if self.is_constant(&str) {
-            Token::Number(*self.constants.get(&str).unwrap())
+            Ok(Token::Number(*self.constants.get(&str).unwrap()))
         } else if self.is_function(&str) {
-            Token::Function(self.functions.get(&str).unwrap())
+            Ok(Token::Function(self.functions.get(&str).unwrap()))
         } else {
-            unreachable!()
+            Err(anyhow!(format!("Unknown expression: {}", str)))
         }
     }
 
@@ -206,13 +205,16 @@ impl Parser {
         if Self::is_digit(ch) {
             Self::read_number(it)
         } else if Self::is_alpha(ch) || Self::is_primitive(ch) {
-            Ok(self.read_function(it))
+            self.read_function(it)
         } else if ch == '(' {
             it.next();
             Ok(Token::OpenParen)
         } else if ch == ')' {
             it.next();
             Ok(Token::CloseParen)
+        } else if ch == ',' {
+            it.next();
+            Ok(Token::Comma)
         } else {
             Err(anyhow!(format!("Unknown symbol: {}", ch)))
         }
@@ -238,24 +240,73 @@ impl Parser {
         Ok(result)
     }
 
+    fn fix_negations<'a>(&'a self, tokens: Vec<Token<'a>>) -> Result<Vec<Token<'a>>> {
+        let mut result: Vec<Token> = Vec::new();
+
+        if tokens.is_empty() {
+            return Ok(result);
+        }
+
+        // handle the first case separately
+        if let Token::Function(f) = tokens.first().unwrap() {
+            if f.name == "-" {
+                result.push(Token::Number(0.0));
+            }
+        }
+
+        for token in tokens {
+            if !result.is_empty() {
+                match (result.last().unwrap(), &token) {
+                    (Token::Function(_) | Token::OpenParen | Token::Comma, Token::Function(f)) => {
+                        if f.name == "-" {
+                            result.push(Token::Number(0.0));
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            result.push(token);
+        }
+
+        Ok(result)
+    }
+
     fn tokenize_to_postfix<'a>(&'a self, str: &'a str) -> Result<Vec<Token<'a>>> {
         let mut it = str.chars().peekable();
         let mut tokens: Vec<Token> = Vec::new();
         loop {
             let token = self.read_next(&mut it);
-            println!("Read token");
-            if it.peek().is_none() {
-                break;
+            match token {
+                Ok(token) => {
+                    tokens.push(token);
+                    println!("{}", tokens.last().unwrap());
+                }
+                Err(e) => {
+                    println!("No token");
+                    if it.peek().is_none() {
+                        break;
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
-            tokens.push(token?);
         }
         // make implicit multiplications explicit
-        let vec = self.insert_multiplications(tokens)?;
-        infix_to_postfix(vec)
+        let tokens = self.insert_multiplications(tokens)?;
+        let tokens = self.fix_negations(tokens)?;
+        log(&format!(
+            "Done tokenizing, items: [{}]",
+            tokens.iter().format(" ")
+        ));
+        infix_to_postfix(tokens)
     }
 
     pub fn parse<'a>(&'a self, str: &'a str) -> Result<Box<dyn Fn(f64) -> f64 + 'a>> {
         let tokens = self.tokenize_to_postfix(str)?;
+        log(&format!(
+            "Done conversion, items: [{}]",
+            tokens.iter().format(" ")
+        ));
         for t in &tokens {
             println!("{}", t);
         }

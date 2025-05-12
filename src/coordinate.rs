@@ -6,15 +6,15 @@ pub fn interpolate(value: f64, min: f64, max: f64, new_min: f64, new_max: f64) -
 
 pub fn pixel_to_coordinate(x: i32, y: i32) -> (f64, f64) {
     let x = interpolate(
-        (x - CONFIG.width / 2) as f64,
-        -(CONFIG.width / 2) as f64,
+        (x - CONFIG.width as i32 / 2) as f64,
+        -(CONFIG.width as i32 / 2) as f64,
         (CONFIG.width / 2) as f64,
         CONFIG.min_x,
         CONFIG.max_x,
     );
     let y = interpolate(
-        (y - CONFIG.height / 2) as f64,
-        -(CONFIG.height / 2) as f64,
+        (y - CONFIG.height as i32 / 2) as f64,
+        -(CONFIG.height as i32 / 2) as f64,
         (CONFIG.height / 2) as f64,
         CONFIG.min_y,
         CONFIG.max_y,
@@ -23,25 +23,25 @@ pub fn pixel_to_coordinate(x: i32, y: i32) -> (f64, f64) {
 }
 
 pub fn coordinate_to_pixel(x: f64, y: f64) -> (i32, i32) {
-    let x = CONFIG.width
+    let x = CONFIG.width as i32
         - (interpolate(
             x,
-            CONFIG.min_x,
-            CONFIG.max_x,
-            -(CONFIG.width / 2) as f64,
+            CONFIG.min_x as f64,
+            CONFIG.max_x as f64,
+            -(CONFIG.width as i32 / 2) as f64,
             (CONFIG.width / 2) as f64,
         )
         .round() as i32
-            + CONFIG.width / 2);
-    let y = CONFIG.height
+            + CONFIG.width as i32 / 2);
+    let y = CONFIG.height as i32
         - (interpolate(
             y,
             CONFIG.min_y,
             CONFIG.max_y,
-            -(CONFIG.height / 2) as f64,
+            -(CONFIG.height as i32 / 2) as f64,
             (CONFIG.height / 2) as f64,
         )
         .round() as i32
-            + CONFIG.height / 2);
+            + CONFIG.height as i32 / 2);
     (x, y)
 }

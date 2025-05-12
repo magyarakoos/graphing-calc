@@ -49,13 +49,16 @@ pub fn infix_to_postfix<'a>(tokens: Vec<Token<'a>>) -> Result<Vec<Token<'a>>> {
                     _ => unreachable!(),
                 }
             },
+            Comma => (),
         }
     }
 
     while !operator_stack.is_empty() {
         match operator_stack.last().unwrap() {
             Function(_) => result.push(operator_stack.pop().unwrap()),
-            OpenParen => (), // ignore unclosed parens
+            OpenParen => {
+                operator_stack.pop();
+            } // ignore unclosed parens
             _ => unreachable!(),
         }
     }
@@ -81,12 +84,6 @@ pub fn evaluate_postfix<'a>(tokens: &Vec<Token<'a>>, x: f64) -> Result<f64> {
                     stack.push(f(a));
                 }
                 Binary(f) => {
-                    // this is negation
-                    if stack.len() == 1 && fun.name == "-" {
-                        let a = stack.pop().unwrap();
-                        stack.push(f(0.0, a));
-                    }
-
                     if stack.len() < 2 {
                         return Err(anyhow!(format!(
                             "Function {} expects 2 arguments, but {} was provided",
